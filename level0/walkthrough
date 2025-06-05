@@ -1,0 +1,32 @@
+# Walkthrough - level0
+
+## Étape 1 : Connexion
+
+Je me suis connecté à la machine RainFall via SSH :
+ssh level0@<ip> -p 4242
+Mot de passe : level0
+
+## Étape 2 : Analyse du binaire
+
+J'ai identifié le binaire exécutable dans le home : ./level0  
+Je l'ai copié en local via scp pour l'analyser avec Ghidra.
+
+## Étape 3 : Analyse statique dans Ghidra
+
+Dans Ghidra, j'ai trouvé une fonction avec le prototype :
+int main(int argc, char **argv)
+
+Cette fonction convertit `argv[1]` en entier via `atoi()`, puis compare à 423 (0x1a7).  
+Si l'utilisateur passe ce nombre, le programme :
+- utilise `strdup("/bin/sh")`
+- élève ses droits avec `setresuid()` et `setresgid()`
+- appelle `execv("/bin/sh", &cmd)` pour ouvrir un shell rooté
+
+Sinon, il affiche juste "No !".
+
+## Étape 4 : Exploitation
+
+J’ai simplement lancé :
+
+```bash
+./level0 423

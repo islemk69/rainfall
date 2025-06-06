@@ -16,7 +16,7 @@ Je l'ai copié en local via scp pour l'analyser avec Ghidra.
 Dans Ghidra, j'ai trouvé une fonction avec le prototype :
 int main(int argc, char **argv)
 
-Cette fonction convertit `argv[1]` en entier via `atoi()`, puis compare à 423 (0x1a7).  
+Cette fonction convertit `argv[1]` en entier via `atoi()`, puis comparoe à 423 (0x1a7).  
 Si l'utilisateur passe ce nombre, le programme :
 - utilise `strdup("/bin/sh")`
 - élève ses droits avec `setresuid()` et `setresgid()`

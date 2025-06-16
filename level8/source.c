@@ -1,24 +1,44 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-undefined4 main(undefined4 param_1,int param_2)dfd
-{
-  int iVar1;
-  char *local_20;
-  undefined4 local_1c;
-  __uid_t local_18;
-  __gid_t local_14;
-  
-  iVar1 = atoi(*(char **)(param_2 + 4));
-  if (iVar1 == 0x1a7) {
-    local_20 = strdup("/bin/sh");
-    local_1c = 0;d
-    local_14 = getegid();
-    local_18 = geteuid();
-    setresgid(local_14,local_14,local_14);
-    setresuid(local_18,local_18,local_18);
-    execv("/bin/sh",&local_20);
-  }
-  else {
-    fwrite("No !\n",1,5,(FILE *)stderr);
-  }
-  return 0;
+char *auth = NULL;
+char *service = NULL;
+
+int main(void) {
+    char buffer[128];
+
+    while (1) {
+        printf("%p, %p\n", auth, service);
+
+        if (!fgets(buffer, sizeof(buffer), stdin)) {
+            return 0;
+        }
+
+        if (strncmp(buffer, "auth ", 5) == 0) {
+            auth = (char *)malloc(4);
+            if (!auth) exit(1);
+            memset(auth, 0, 4);
+
+            if (strlen(buffer + 5) < 31) {
+                strcpy(auth, buffer + 5);
+            }
+        }
+
+        if (strncmp(buffer, "reset", 5) == 0) {
+            free(auth);
+        }
+
+        if (strncmp(buffer, "service", 7) == 0) {
+            service = strdup(buffer + 7);
+        }
+
+        if (strncmp(buffer, "login", 5) == 0) {
+            if (auth && *(int *)(auth + 32) != 0) {
+                system("/bin/sh");
+            } else {
+                fwrite("Password:\n", 1, 10, stdout);
+            }
+        }
+    }
 }

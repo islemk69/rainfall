@@ -1,0 +1,37 @@
+# Exploitation logique - Rainfall Bonus3
+
+## Objectif
+
+Obtenir un shell `/bin/sh` depuis le binaire `bonus3` afin de récupérer le flag du dernier utilisateur `end`.
+
+## Analyse du Comportement
+
+1. Le binaire lit le fichier `/home/user/end/.pass`.
+2. Il copie les 66 premiers caractères dans un buffer (taille 132).
+3. Ensuite, il applique cette opération : `buffer[atoi(argv[1])] = 0`.
+4. Puis il lit 65 autres caractères dans la suite du buffer.
+5. Enfin, il compare la chaîne `buffer` avec `argv[1]` :
+   - Si les deux sont identiques : exécution de `execl("/bin/sh", "sh", 0)`.
+   - Sinon, il affiche les 65 caractères lus en seconde partie.
+
+## Détail de l'Exploitation
+
+- La fonction `atoi("")` retourne `0` car la chaîne est vide.
+- Donc, `buffer[0] = 0` (injection d’un `\0` au début du flag).
+- Cela rend la chaîne `buffer` vide (`""`), puisque le premier octet est `\0`.
+- Ensuite, le programme compare cette chaîne vide avec `argv[1]` (nous passons aussi `""`).
+- Résultat : `strcmp(buffer, argv[1]) == 0` → shell exécuté.
+
+## Étapes pour Obtenir le Shell
+
+```bash
+bonus3@RainFall:~$ ./bonus3 ""
+$ whoami
+end
+$ cat /home/user/end/.pass
+<flag ici>
+```
+
+## Conclusion
+
+Cette exploitation repose uniquement sur la logique du code C. En passant une chaîne vide, on transforme le contenu du buffer en chaîne vide à son tour, ce qui satisfait la condition `strcmp`. Pas besoin d'assembleur ni d'injection avancée : une compréhension claire de la logique suffit.

@@ -54,6 +54,43 @@ void N::setAnnotation(N *this, char *param_1) {
    - Redirection vers un shellcode
    - Utilisation de la méthode virtuelle pour exécuter le shellcode
 
+### Convention Standard C++ : La vtable toujours au début de l'objet
+
+En C++, pour toute classe contenant au moins une méthode virtuelle, le compilateur place **toujours** le pointeur vers la vtable en tout début d'objet. C'est une convention du standard C++ :
+
+```cpp
+class N {
+    // vtable pointer (implicite) ← TOUJOURS en premier
+    // autres membres...
+};
+```
+
+Cela signifie que si l'on peut écraser le début d'un objet, on peut détourner le mécanisme de résolution dynamique des méthodes virtuelles.
+
+### Analyse de la vtable avec GDB
+
+Pour vérifier la position de la vtable et son contenu :
+
+```bash
+gdb ./level9
+(gdb) break main
+(gdb) run test
+(gdb) n  # Jusqu'après "new N(5)"
+
+# Examiner l'objet obj1
+(gdb) x/10x 0x804a008
+0x804a008: 0x08048848  0x00000000  0x00000000  0x00000000
+0x804a018: 0x00000000  0x00000000  0x00000000  0x00000000
+0x804a028: 0x00000000  0x00000000
+
+# Vérifier que 0x08048848 est bien une vtable
+(gdb) x 0x08048848
+0x8048848: 0x804086a  # Adresse d'une fonction
+```
+
+On voit que le tout premier champ de l'objet est bien le pointeur vtable, et que la vtable contient des pointeurs vers les fonctions virtuelles de la classe.
+
+
 ## Étapes de l'Exploitation
 
 ### 1. Analyse des Allocations

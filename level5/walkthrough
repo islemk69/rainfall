@@ -69,8 +69,8 @@ Processus de recherche :
 gdb ./level5
 
 # Recherche des adresses importantes
-(gdb) x o                    # Adresse de la fonction o
-(gdb) disas n               # Analyse de la fonction n
+(gdb) x o                  # Adresse de la fonction o
+(gdb) disas n              # Analyse de la fonction n
 (gdb) disas exit           # Analyse de la fonction exit
 (gdb) x 0x8049838          # Vérification de l'adresse exit dans la GOT
 ```
@@ -78,7 +78,7 @@ gdb ./level5
 ### 3. Mise en Place des Breakpoints
 
 ```bash
-(gdb) disas n              # Pour localiser printf et exit
+(gdb) disas n             # Pour localiser printf et exit
 (gdb) b printf            # Breakpoint sur printf
 (gdb) b exit              # Breakpoint sur exit
 (gdb) run                 # Exécution du programme

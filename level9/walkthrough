@@ -85,7 +85,7 @@ gdb ./level9
 
 # Vérifier que 0x08048848 est bien une vtable
 (gdb) x 0x08048848
-0x8048848: 0x804086a  # Adresse d'une fonction
+0x8048848: 0x804086a
 ```
 
 On voit que le tout premier champ de l'objet est bien le pointeur vtable, et que la vtable contient des pointeurs vers les fonctions virtuelles de la classe.
@@ -96,7 +96,7 @@ On voit que le tout premier champ de l'objet est bien le pointeur vtable, et que
 ### 1. Analyse des Allocations
 
 ```bash
-# Utilisation de ltrace pour trouver les adresses
+
 ltrace ./level9 test
 _Znwj(108, 0xbffff7e4, 0xbffff7f0, 0xb7d79e55, 0xb7fed280) = 0x804a008  # obj1
 _Znwj(108, 5, 0xbffff7f0, 0xb7d79e55, 0xb7fed280) = 0x804a078          # obj2

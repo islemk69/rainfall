@@ -3,10 +3,10 @@
 // ============================================================================
 undefined4 main(void)
 {
-  char local_3a[54];  // Buffer de 54 bytes
+  char local_3a[54];
   
-  pp(local_3a);       // Appel à pp avec le buffer
-  puts(local_3a);     // Affichage du résultat
+  pp(local_3a);
+  puts(local_3a);
   return 0;
 }
 
@@ -19,16 +19,14 @@ void pp(char *param_1)
   uint uVar2;
   char *pcVar3;
   byte bVar4;
-  char local_34[20];  // Premier input (20 bytes)
-  char local_20[20];  // Deuxième input (20 bytes)
+  char local_34[20];
+  char local_20[20];
   
   bVar4 = 0;
   
-  // Récupération des deux inputs
-  p(local_34, &DAT_080486a0);  // Premier appel à p()
-  p(local_20, &DAT_080486a0);  // Deuxième appel à p()
+  p(local_34, &DAT_080486a0);
+  p(local_20, &DAT_080486a0);
   
-  // Copie du premier input dans param_1
   strcpy(param_1, local_34);
   
   // Calcul de la longueur de param_1 (équivalent à strlen)
@@ -57,12 +55,11 @@ void pp(char *param_1)
 void p(char *param_1, char *param_2)
 {
   char *pcVar1;
-  char local_100c[4104];  // Buffer énorme de 4104 bytes
+  char local_100c[4104];
   
-  // Affichage du message
+
   puts(param_2);
   
-  // Lecture de l'input (max 4096 bytes)
   read(0, local_100c, 0x1000);
   
   // Recherche du caractère newline ('\n')

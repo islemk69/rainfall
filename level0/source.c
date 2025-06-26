@@ -10,7 +10,6 @@ int main(int argc, char **argv) {
     uid_t uid;
     gid_t gid;
 
-    // Conversion de l'argument en entier
     input = atoi(argv[1]);
 
     if (input == 423) { // 0x1a7 en hexadécimal

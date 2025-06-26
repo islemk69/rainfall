@@ -23,7 +23,7 @@ La fonction p() contient la vulnérabilité :
 void p(void) {
   char local_50[76];
   fflush(stdout);
-  gets(local_50); // VULNÉRABLE
+  gets(local_50);
 
   if ((retaddr & 0xb0000000) == 0xb0000000) {
     printf("(%p)\n", retaddr);

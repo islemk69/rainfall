@@ -1,24 +1,35 @@
 
-undefined4 main(undefined4 param_1,int param_2)dfd
+void p(void) {
+  // Adresse de retour stockée implicitement (utilisée plus tard pour vérification)
+  unsigned int retaddr;
+
+  // Buffer de 76 octets pour stocker l'entrée utilisateur
+  char buffer[76];
+
+  // Vide le buffer de sortie standard (stdout)
+  fflush(stdout)
+
+  // Lit l'entrée utilisateur sans vérification de taille → VULNÉRABLE !
+  gets(buffer);
+
+  // Simule une vérification de l'adresse de retour (emplacement où le programme sautera après p())
+  // Ici, si l'adresse de retour commence par 0xb (donc dans la stack), il quitte brutalement
+  if ((retaddr & 0xb0000000) == 0xb0000000) {
+    printf("(%p)\n", retaddr);
+    _exit(1);  // Termine immédiatement le programme
+  }
+
+  puts(buffer);
+  strdup(buffer);
+
+  return;
+}
+
+
+
+void main(void)
+
 {
-  int iVar1;
-  char *local_20;
-  undefined4 local_1c;
-  __uid_t local_18;
-  __gid_t local_14;
-  
-  iVar1 = atoi(*(char **)(param_2 + 4));
-  if (iVar1 == 0x1a7) {
-    local_20 = strdup("/bin/sh");
-    local_1c = 0;
-    local_14 = getegid();
-    local_18 = geteuid();
-    setresgid(local_14,local_14,local_14);
-    setresuid(local_18,local_18,local_18);
-    execv("/bin/sh",&local_20);
-  }
-  else {
-    fwrite("No !\n",1,5,(FILE *)stderr);
-  }
-  return 0;
+  p();
+  return;
 }

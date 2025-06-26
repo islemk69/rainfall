@@ -1,24 +1,27 @@
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        exit(1);
+    }
+    
+    N *obj1 = new N(5);        // Premier objet (108 bytes)
+    N *obj2 = new N(6);        // Deuxième objet (108 bytes)
+    
+    obj1->setAnnotation(argv[1]);    // VULNÉRABILITÉ : buffer overflow
+    
+    // Appel de méthode virtuelle via vtable
+    obj2->vtable[0](obj2, obj1);     // Équivalent de obj2->operator+(obj1)
+    
+    return 0;
+}
 
-undefined4 main(undefined4 param_1,int param_2)dfd
-{
-  int iVar1;
-  char *local_20;
-  undefined4 local_1c;
-  __uid_t local_18;
-  __gid_t local_14;
-  
-  iVar1 = atoi(*(char **)(param_2 + 4));
-  if (iVar1 == 0x1a7) {
-    local_20 = strdup("/bin/sh");
-    local_1c = 0;d
-    local_14 = getegid();
-    local_18 = geteuid();
-    setresgid(local_14,local_14,local_14);
-    setresuid(local_18,local_18,local_18);
-    execv("/bin/sh",&local_20);
-  }
-  else {
-    fwrite("No !\n",1,5,(FILE *)stderr);
-  }
-  return 0;
+// Constructeur de la classe N
+void N::N(N *this, int param_1) {
+    this->vtable = &N_vtable;     // Pointeur vtable à l'offset +0
+    this->value = param_1;        // Valeur (5 ou 6) à l'offset +0x68
+}
+
+// Fonction vulnérable
+void N::setAnnotation(N *this, char *param_1) {
+    size_t len = strlen(param_1);
+    memcpy(this + 4, param_1, len);  // Copie SANS vérification de taille !
 }

@@ -1,12 +1,8 @@
 
 void p(void) {
-  // Adresse de retour stockée implicitement (utilisée plus tard pour vérification)
   unsigned int retaddr;
-
-  // Buffer de 76 octets pour stocker l'entrée utilisateur
   char buffer[76];
 
-  // Vide le buffer de sortie standard (stdout)
   fflush(stdout)
 
   // Lit l'entrée utilisateur sans vérification de taille → VULNÉRABLE !
@@ -16,7 +12,7 @@ void p(void) {
   // Ici, si l'adresse de retour commence par 0xb (donc dans la stack), il quitte brutalement
   if ((retaddr & 0xb0000000) == 0xb0000000) {
     printf("(%p)\n", retaddr);
-    _exit(1);  // Termine immédiatement le programme
+    _exit(1);  
   }
 
   puts(buffer);
